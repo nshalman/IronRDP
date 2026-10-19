@@ -22,17 +22,17 @@ use ironrdp::connector::credssp::KerberosConfig;
 use ironrdp::connector::{self, ClientConnector, Credentials};
 use ironrdp::displaycontrol::client::DisplayControlClient;
 use ironrdp::dvc::DrdynvcClient;
-use ironrdp_egfx::client::{GraphicsPipelineClient, GraphicsPipelineHandler};
 use ironrdp::graphics::image_processing::PixelFormat;
 use ironrdp::pdu::input::fast_path::FastPathInputEvent;
 use ironrdp::pdu::rdp::capability_sets::{BitmapCodecs, client_codecs_capabilities};
 use ironrdp::pdu::rdp::client_info::{PerformanceFlags, TimezoneInfo};
 use ironrdp::rdpdr::Rdpdr;
 use ironrdp::rdpdr::pdu::efs::{DEFAULT_PRINTER_DRIVER_NAME, MICROSOFT_PRINT_TO_PDF_DRIVER_NAME};
-use ironrdp::rdpsnd::client::{NoopRdpsndBackend, Rdpsnd};
+use ironrdp::rdpsnd::client::Rdpsnd;
 use ironrdp::session::image::DecodedImage;
 use ironrdp::session::{ActiveStageBuilder, ActiveStageOutput, GracefulDisconnectReason};
 use ironrdp_core::WriteBuf;
+use ironrdp_egfx::client::{GraphicsPipelineClient, GraphicsPipelineHandler};
 use ironrdp_futures::{FramedWrite, single_sequence_step_read};
 use rgb::AsPixels as _;
 use tap::prelude::*;
@@ -520,6 +520,10 @@ impl iron_remote_desktop::SessionBuilder for SessionBuilder {
 
         let use_display_control = self.0.borrow().use_display_control;
 
+        // Plays the session's audio until its backend, owned by the RDPSND processor, goes.
+        let (audio_backend, audio_waves) = crate::audio::channel();
+        spawn_local(crate::audio::play(audio_waves));
+
         let (connection_result, ws) = connect(ConnectParams {
             ws,
             config,
@@ -535,6 +539,7 @@ impl iron_remote_desktop::SessionBuilder for SessionBuilder {
             printer_driver_name,
             computer_name: client_name.clone(),
             use_display_control,
+            audio_backend,
         })
         .await?;
 
@@ -1539,7 +1544,7 @@ fn build_config(
         compression_type: None,
         enable_server_pointer: true,
         autologon: false,
-        enable_audio_playback: false,
+        enable_audio_playback: true,
         enable_audio_capture: false,
         request_data: None,
         pointer_software_rendering: false,
@@ -1612,6 +1617,7 @@ struct ConnectParams {
     /// `computer_name` when constructing the `Rdpdr` processor.
     computer_name: String,
     use_display_control: bool,
+    audio_backend: crate::audio::WebAudioBackend,
 }
 
 fn default_printer_driver_name() -> String {
@@ -1662,6 +1668,7 @@ async fn connect(
         printer_driver_name,
         computer_name,
         use_display_control,
+        audio_backend,
     }: ConnectParams,
 ) -> Result<(connector::ConnectionResult, WebSocket), IronError> {
     let mut framed = ironrdp_futures::LocalFuturesFramed::new(ws);
@@ -1675,11 +1682,11 @@ async fn connect(
         connector.attach_static_channel(CliprdrClient::new(Box::new(clipboard_backend)));
     }
 
+    // The server's audio, played through Web Audio. Windows servers also only speak on RDPDR
+    // when RDPSND is advertised (MS-RDPEFS Appendix A<1>), which this covers.
+    connector.attach_static_channel(Rdpsnd::new(Box::new(audio_backend)));
+
     if let Some(printer_backend) = printer_backend {
-        // Windows servers only speak on RDPDR when RDPSND is advertised too
-        // (MS-RDPEFS Appendix A<1>). We do not play audio in the web client,
-        // but the no-op RDPSND processor satisfies that channel dependency.
-        connector.attach_static_channel(Rdpsnd::new(Box::new(NoopRdpsndBackend)));
         connector.attach_static_channel(
             Rdpdr::new(Box::new(printer_backend), computer_name).with_printer_driver(
                 printer_device_id,
