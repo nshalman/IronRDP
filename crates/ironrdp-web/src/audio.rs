@@ -33,6 +33,8 @@ fn pcm_format() -> AudioFormat {
 }
 
 /// One wave's 16-bit little-endian interleaved samples.
+// Only the browser build plays waves; elsewhere they are received and dropped.
+#[cfg_attr(not(target_arch = "wasm32"), expect(dead_code))]
 pub(crate) struct Wave {
     channels: u16,
     rate: u32,
