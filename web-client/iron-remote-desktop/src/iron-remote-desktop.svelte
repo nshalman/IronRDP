@@ -410,6 +410,9 @@
     }
 
     canvas {
+        /* Not inline: an inline canvas sits on a text baseline, and the line
+           below it overflows the viewer by a few pixels. */
+        display: block;
         width: 100%;
         height: 100%;
     }
