@@ -22,6 +22,7 @@ use ironrdp::connector::credssp::KerberosConfig;
 use ironrdp::connector::{self, ClientConnector, Credentials};
 use ironrdp::displaycontrol::client::DisplayControlClient;
 use ironrdp::dvc::DrdynvcClient;
+use ironrdp_egfx::client::{GraphicsPipelineClient, GraphicsPipelineHandler};
 use ironrdp::graphics::image_processing::PixelFormat;
 use ironrdp::pdu::input::fast_path::FastPathInputEvent;
 use ironrdp::pdu::rdp::capability_sets::{BitmapCodecs, client_codecs_capabilities};
@@ -1534,7 +1535,7 @@ fn build_config(
         request_data: None,
         pointer_software_rendering: false,
         multitransport_flags: None,
-        support_dyn_vc_gfx_protocol: false,
+        support_dyn_vc_gfx_protocol: true,
         performance_flags: PerformanceFlags::default(),
         desktop_scale_factor: 0,
         hardware_id: None,
@@ -1679,11 +1680,19 @@ async fn connect(
         );
     }
 
+    // The client-side compositor (ironrdp-egfx) holds the surface pixel state and
+    // the session drains it into the image, so the graphics pipeline's per-command
+    // callbacks are unused, as in ironrdp-client. Without an H.264 decoder the client
+    // advertises only the non-AVC capability sets it can decode.
+    struct EgfxHandler;
+    impl GraphicsPipelineHandler for EgfxHandler {}
+
+    let mut drdynvc =
+        DrdynvcClient::new().with_dynamic_channel(GraphicsPipelineClient::new(Box::new(EgfxHandler), None));
     if use_display_control {
-        connector.attach_static_channel(
-            DrdynvcClient::new().with_dynamic_channel(DisplayControlClient::new(|_| Ok(Vec::new()))),
-        );
+        drdynvc = drdynvc.with_dynamic_channel(DisplayControlClient::new(|_| Ok(Vec::new())));
     }
+    connector.attach_static_channel(drdynvc);
 
     let kerberos_config = url::Url::parse(kdc_proxy_url.unwrap_or_default().as_str())
         .ok()
