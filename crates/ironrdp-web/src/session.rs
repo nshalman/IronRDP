@@ -942,6 +942,15 @@ impl iron_remote_desktop::Session for Session {
                             .context("Send frame to writer task")?;
                     }
                     ActiveStageOutput::GraphicsUpdate(region) => {
+                        // An EGFX ResetGraphics resizes the image with no
+                        // Deactivation-Reactivation Sequence, so the canvas
+                        // follows the image here, at the size the server chose.
+                        let size = (u32::from(image.width()), u32::from(image.height()));
+                        if gui.size() != size
+                            && let (Some(width), Some(height)) = (NonZeroU32::new(size.0), NonZeroU32::new(size.1))
+                        {
+                            gui.resize(width, height);
+                        }
                         let region = extract_partial_image(&image, region, &mut draw_buffer);
                         gui.draw(draw_buffer.filled_mut(), region)
                             .context("draw updated region")?;

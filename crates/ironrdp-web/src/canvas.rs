@@ -29,6 +29,11 @@ impl Canvas {
         })
     }
 
+    /// The canvas's size in pixels.
+    pub(crate) fn size(&self) -> (u32, u32) {
+        (self.canvas.width(), self.canvas.height())
+    }
+
     /// Resizes the backing store. Note: this also clears the canvas and resets 2D context state;
     /// the cached `ctx` stays valid.
     pub(crate) fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) {
