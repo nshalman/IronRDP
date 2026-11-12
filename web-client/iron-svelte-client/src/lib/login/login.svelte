@@ -7,9 +7,11 @@
         displayControl,
         kdcProxyUrl,
         vmConnect,
+        audioPlayback,
         init,
         type VmConnectMode,
     } from '../../../static/iron-remote-desktop-rdp';
+    import { createWebAudioPlayer, type WebAudioPlayer } from '$lib/audio/web-audio-player';
     import { toast } from '$lib/messages/message-store';
     import { showLogin } from '$lib/login/login-store';
     import { onMount } from 'svelte';
@@ -27,6 +29,7 @@
     let vmconnectMode: VmConnectMode = 'enhanced';
     let pop_up = false;
     let enable_clipboard = true;
+    let enable_audio = true;
 
     let userInteraction: UserInteraction;
 
@@ -103,6 +106,7 @@
                 vmconnectMode,
                 kdc_proxy_url,
                 enable_clipboard,
+                enable_audio,
             });
             const base64Data = btoa(data);
             window.open(
@@ -136,6 +140,12 @@
 
         if (kdc_proxy_url !== '') {
             configBuilder.withExtension(kdcProxyUrl(kdc_proxy_url));
+        }
+
+        let audioPlayer: WebAudioPlayer | undefined;
+        if (enable_audio) {
+            audioPlayer = createWebAudioPlayer();
+            configBuilder.withExtension(audioPlayback(audioPlayer.handle));
         }
 
         const config = configBuilder.build();
@@ -182,6 +192,8 @@
                     message: `${err}`,
                 });
             }
+        } finally {
+            audioPlayer?.close();
         }
     };
 
@@ -268,6 +280,15 @@
                                     style="width: 1.5em; height: 1.5em; margin-right: 0.5em;"
                                 />
                                 <label for="enable_clipboard">Enable Clipboard</label>
+                            </div>
+                            <div class="checkbox-wrapper">
+                                <input
+                                    id="enable_audio"
+                                    type="checkbox"
+                                    bind:checked={enable_audio}
+                                    style="width: 1.5em; height: 1.5em; margin-right: 0.5em;"
+                                />
+                                <label for="enable_audio">Enable Audio</label>
                             </div>
                         </div>
                     </div>

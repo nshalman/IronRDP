@@ -3,7 +3,14 @@
     import { userInteractionService } from '../../services/session.service';
     import type { UserInteraction } from '../../../static/iron-remote-desktop';
     import { Backend } from '../../../static/iron-remote-desktop-rdp';
-    import { preConnectionBlob, displayControl, kdcProxyUrl, vmConnect } from '../../../static/iron-remote-desktop-rdp';
+    import {
+        preConnectionBlob,
+        displayControl,
+        kdcProxyUrl,
+        vmConnect,
+        audioPlayback,
+    } from '../../../static/iron-remote-desktop-rdp';
+    import { createWebAudioPlayer } from '$lib/audio/web-audio-player';
 
     let userInteraction: UserInteraction;
     let cursorOverrideActive = false;
@@ -33,6 +40,7 @@
                 vmconnectId,
                 vmconnectMode,
                 desktopSize,
+                enable_audio,
             } = parsedData;
 
             const configBuilder = userInteraction
@@ -56,6 +64,11 @@
 
             if (typeof kdc_proxy_url === 'string' && kdc_proxy_url !== '') {
                 configBuilder.withExtension(kdcProxyUrl(kdc_proxy_url));
+            }
+
+            // Plays until the popup window closes.
+            if (enable_audio === true) {
+                configBuilder.withExtension(audioPlayback(createWebAudioPlayer().handle));
             }
 
             const config = configBuilder.build();
